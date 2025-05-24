@@ -1,0 +1,28 @@
+kosis api 받는 주소 (나중에 수정 )
+https://kosis.kr/statHtml/statHtml.do?orgId=133&tblId=TX_13301_A169&vw_cd=MT_ZTITLE&list_id=133_13301_200_90_80&seqNo=&lang_mode=ko&language=kor&obj_var_id=&itm_id=&conn_path=MT_ZTITLE
+
+폐업자 현황 1(연령,성,업태)
+https://kosis.kr/openapi/Param/statisticsParameterData.do?method=getList&apiKey=NjE5YzRlMmI2MjM2NTE3MjM3N2Y5NzY4YmU0OTgxZTc=&itmId=H001+&objL1=ALL&objL2=ALL&objL3=ALL&objL4=ALL&objL5=&objL6=&objL7=&objL8=&format=json&jsonVD=Y&prdSe=Y&startPrdDe=2013&endPrdDe=2023&outputFields=ORG_ID+TBL_ID+TBL_NM+OBJ_ID+OBJ_NM+OBJ_NM_ENG+NM+NM_ENG+ITM_ID+ITM_NM+ITM_NM_ENG+UNIT_NM+UNIT_NM_ENG+PRD_SE+PRD_DE+LST_CHN_DE+&orgId=133&tblId=DT_133N_987
+
+폐업자 현황 2 (연령,성,지역)
+https://kosis.kr/openapi/Param/statisticsParameterData.do?method=getList&apiKey=NjE5YzRlMmI2MjM2NTE3MjM3N2Y5NzY4YmU0OTgxZTc=&itmId=H001+&objL1=ALL&objL2=ALL&objL3=ALL&objL4=ALL&objL5=&objL6=&objL7=&objL8=&format=json&jsonVD=Y&prdSe=Y&startPrdDe=2014&endPrdDe=2023&outputFields=ORG_ID+TBL_ID+TBL_NM+OBJ_ID+OBJ_NM+OBJ_NM_ENG+NM+NM_ENG+ITM_ID+ITM_NM+ITM_NM_ENG+UNIT_NM+UNIT_NM_ENG+PRD_SE+PRD_DE+LST_CHN_DE+&orgId=133&tblId=DT_13301N_9810
+
+폐업자 현황 3 (지역 ,성 ,업태)
+https://kosis.kr/openapi/Param/statisticsParameterData.do?method=getList&apiKey=NjE5YzRlMmI2MjM2NTE3MjM3N2Y5NzY4YmU0OTgxZTc=&itmId=H001+&objL1=ALL&objL2=ALL&objL3=ALL&objL4=&objL5=&objL6=&objL7=&objL8=&format=json&jsonVD=Y&prdSe=Y&startPrdDe=2014&endPrdDe=2023&outputFields=ORG_ID+TBL_ID+TBL_NM+OBJ_ID+OBJ_NM+OBJ_NM_ENG+NM+NM_ENG+ITM_ID+ITM_NM+ITM_NM_ENG+UNIT_NM+UNIT_NM_ENG+PRD_SE+PRD_DE+LST_CHN_DE+&orgId=133&tblId=DT_13301N_9811
+
+폐업자 현황 4 (폐업사유,지역,업태)
+https://kosis.kr/openapi/Param/statisticsParameterData.do?method=getList&apiKey=NjE5YzRlMmI2MjM2NTE3MjM3N2Y5NzY4YmU0OTgxZTc=&itmId=T01+&objL1=ALL&objL2=ALL&objL3=ALL&objL4=&objL5=&objL6=&objL7=&objL8=&format=json&jsonVD=Y&prdSe=Y&startPrdDe=2005&endPrdDe=2023&outputFields=ORG_ID+TBL_ID+TBL_NM+OBJ_ID+OBJ_NM+OBJ_NM_ENG+NM+NM_ENG+ITM_ID+ITM_NM+ITM_NM_ENG+UNIT_NM+UNIT_NM_ENG+PRD_SE+PRD_DE+LST_CHN_DE+&orgId=133&tblId=TX_13301_A169
+
+폐업자 현황 5 (사업존속연수 ,지역,업태)
+https://kosis.kr/openapi/Param/statisticsParameterData.do?method=getList&apiKey=NjE5YzRlMmI2MjM2NTE3MjM3N2Y5NzY4YmU0OTgxZTc=&itmId=T01+&objL1=ALL&objL2=ALL&objL3=ALL&objL4=&objL5=&objL6=&objL7=&objL8=&format=json&jsonVD=Y&prdSe=Y&startPrdDe=2005&endPrdDe=2023&outputFields=ORG_ID+TBL_ID+TBL_NM+OBJ_ID+OBJ_NM+OBJ_NM_ENG+NM+NM_ENG+ITM_ID+ITM_NM+ITM_NM_ENG+UNIT_NM+UNIT_NM_ENG+PRD_SE+PRD_DE+LST_CHN_DE+&orgId=133&tblId=TX_13301_A171
+
+폐업자 현황 6 (지역,업태)
+https://kosis.kr/openapi/Param/statisticsParameterData.do?method=getList&apiKey=NjE5YzRlMmI2MjM2NTE3MjM3N2Y5NzY4YmU0OTgxZTc=&itmId=H001+&objL1=ALL&objL2=ALL&objL3=ALL&objL4=&objL5=&objL6=&objL7=&objL8=&format=json&jsonVD=Y&prdSe=Y&startPrdDe=2018&endPrdDe=2023&outputFields=ORG_ID+TBL_ID+TBL_NM+OBJ_ID+OBJ_NM+OBJ_NM_ENG+NM+NM_ENG+ITM_ID+ITM_NM+ITM_NM_ENG+UNIT_NM+UNIT_NM_ENG+PRD_SE+PRD_DE+LST_CHN_DE+&orgId=133&tblId=DT_133N_9815A
+
+프렌차이즈업 폐업률 
+https://www.data.go.kr/data/15110241/openapi.do#/API%20%EB%AA%A9%EB%A1%9D/getBrandFrcsStats
+
+
+
+프렌차이즈 계폐업 api 
+https://www.data.go.kr/data/15125569/openapi.do
