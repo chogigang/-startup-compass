@@ -1,23 +1,26 @@
-# 연령별 페이지 속성 스크롤 옆으로 이동하면 같이 이동하도록 수정해야함
 # 필요한 모듈 import
+import os
+import re
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk,scrolledtext
 import webbrowser
+import threading
+import time
+import threading
+
 # 데이터 시각화를 위한 라이브러리
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
-import pandas as pd # DataFrame 사용을 위해 (선택적, 데이터 처리에 유용)
+import pandas as pd
 import requests
 import json
 from tkinter import messagebox
 from urllib.parse import quote_plus
-import webbrowser
 
+# matplotlib 설정
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
-import requests
 
 
 # 한글 폰트 설정 (macOS용)
@@ -215,38 +218,37 @@ class AgeClosurePage(DetailPage):
         """메인 페이지로 돌아가기"""
         self.controller.show_frame(MainPage)
 
-
     def __init__(self, parent, controller):
-        DetailPage.__init__(self, parent, controller, 
-                          "최근 5년간 연령별 폐업률 통계", "연 성별 업태")
-        
+        DetailPage.__init__(self, parent, controller,
+                          " 4년간 연령별 폐업률 통계", "연 성별 업태")
+
         # 한글 폰트 설정
         plt.rcParams['font.family'] = ['AppleGothic']  # macOS용
         plt.rcParams['axes.unicode_minus'] = False
-        
+
         # 컨트롤 프레임
         self.control_frame = tk.Frame(self.content_frame, bg="white")
         self.control_frame.pack(fill=tk.X, pady=10)
-        
+
         # 시작 년도 선택
         tk.Label(self.control_frame, text="시작 년도:", bg="white").pack(side=tk.LEFT, padx=5)
         self.start_year_var = tk.StringVar(value="2020")
-        self.start_year_combo = ttk.Combobox(self.control_frame, textvariable=self.start_year_var, 
-                                           values=[str(year) for year in range(2015, 2025)], width=10)
+        self.start_year_combo = ttk.Combobox(self.control_frame, textvariable=self.start_year_var,
+                                           values=[str(year) for year in range(2019, 2023)], width=10)
         self.start_year_combo.pack(side=tk.LEFT, padx=5)
-        
+
         # 종료 년도 선택
         tk.Label(self.control_frame, text="종료 년도:", bg="white").pack(side=tk.LEFT, padx=5)
         self.end_year_var = tk.StringVar(value="2023")
         self.end_year_combo = ttk.Combobox(self.control_frame, textvariable=self.end_year_var,
-                                         values=[str(year) for year in range(2015, 2025)], width=10)
+                                         values=[str(year) for year in range(2019, 2023)], width=10)
         self.end_year_combo.pack(side=tk.LEFT, padx=5)
-        
+
         # 조회 버튼
         self.search_button = tk.Button(self.control_frame, text="조회", command=self.load_data)
         self.search_button.pack(side=tk.LEFT, padx=10)
-        #메인으로 돌아가기 버튼
-        self.home_button = tk.Button(self.control_frame, text="메인으로 돌아가기", 
+        # 메인으로 돌아가기 버튼
+        self.home_button = tk.Button(self.control_frame, text="메인으로 돌아가기",
                                command=self.go_to_main,
                                bg="#2196F3", font=("Arial", 10, "bold"),
                                relief="raised", borderwidth=2)
@@ -255,71 +257,71 @@ class AgeClosurePage(DetailPage):
         # 테이블 프레임 (스크롤 가능)
         self.table_frame = tk.Frame(self.content_frame, bg="white")
         self.table_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-        
+
         # 정보 표시 프레임 (한 번만 생성)
         self.info_frame = tk.Frame(self.content_frame, bg="white")
         self.info_frame.pack(fill=tk.X, pady=5)
-        
+
         # 초기 데이터 로드
-        self.load_data()
-    
+        # self.load_data()
+
     def load_data(self):
         """KOSIS API에서 데이터를 로드하여 테이블에 표시"""
         try:
             # 기존 테이블 위젯 제거
             for widget in self.table_frame.winfo_children():
                 widget.destroy()
-            
+
             # 기존 정보 프레임 내용 제거 (중복 방지)
             for widget in self.info_frame.winfo_children():
                 widget.destroy()
-            
+
             # 년도 유효성 검사 - 종료 년도 제대로 인식
             start_year = self.start_year_var.get()
             end_year = self.end_year_var.get()
-            
+
             print(f"선택된 시작 년도: {start_year}")
             print(f"선택된 종료 년도: {end_year}")
-            
+
             if int(start_year) > int(end_year):
                 messagebox.showerror("오류", "시작 년도가 종료 년도보다 클 수 없습니다.")
                 return
-            
+
             # 로딩 메시지 표시
             loading_label = tk.Label(self.table_frame, text="데이터를 불러오는 중...", bg="white")
             loading_label.pack(pady=50)
             self.table_frame.update()
-            
+
             # 샘플 데이터 생성 (API 대신)
             data = self.create_sample_data(start_year, end_year)
-            
+
             # 로딩 메시지 제거
             loading_label.destroy()
-            
+
             # 행렬 형태 테이블 생성
             self.create_matrix_table(data)
-            
+
             # 정보 표시
-            count_label = tk.Label(self.info_frame, 
-                                 text=f"총 {len(data)}개의 데이터를 행렬 형태로 표시", 
+            count_label = tk.Label(self.info_frame,
+                                 text=f"총 {len(data)}개의 데이터를 행렬 형태로 표시",
                                  bg="white", font=("Arial", 9))
             count_label.pack(side=tk.LEFT)
-            
-            info_label = tk.Label(self.info_frame, 
-                                text="19개 업태별 폐업자 수와 폐업률 통계 (예: 12,345명 | 13.7%)", 
+
+            info_label = tk.Label(self.info_frame,
+                                text="19개 업태별 폐업자 수와 폐업률 통계 (예: 12,345명 | 13.7%)",
                                 bg="white", font=("Arial", 9), fg="blue")
             info_label.pack(side=tk.RIGHT)
-            
+
         except Exception as e:
             # 로딩 메시지 제거
             for widget in self.table_frame.winfo_children():
                 widget.destroy()
             print(f"오류 발생: {e}")
-            
+
             # 오류 시에도 샘플 데이터 표시
             sample_data = self.create_sample_data(start_year, end_year)
             self.create_matrix_table(sample_data)
-    
+
     def create_sample_data(self, start_year, end_year):
         """종료 년도까지 포함한 샘플 데이터 생성 - 폐업자 수와 폐업률 함께 생성"""
         sample_data = []
@@ -327,7 +329,7 @@ class AgeClosurePage(DetailPage):
         regions = ['전국']
         age_groups = ['30세 미만', '30세 이상', '40세 이상']
         genders = ['합계', '남자', '여자']
-        
+
         # 실제 KOSIS 업태 분류를 참고한 다양한 업태
         business_types = [
             '농업, 임업 및 어업',
@@ -350,17 +352,17 @@ class AgeClosurePage(DetailPage):
             '예술, 스포츠 및 여가관련 서비스업',
             '협회 및 단체, 수리 및 기타 개인 서비스업'
         ]
-        
+
         print(f"샘플 데이터 생성: {start_year}년 ~ {end_year}년")
         print(f"업태 개수: {len(business_types)}개")
-        
+
         for year in years:
             for region in regions:
                 for business in business_types:
                     for age in age_groups:
                         for gender in genders:
                             import random
-                            
+
                             # 업태별로 다른 폐업률 범위 설정 (현실적 반영)
                             if '음식점' in business or '숙박' in business:
                                 # 음식점, 숙박업은 폐업률이 높음
@@ -382,7 +384,7 @@ class AgeClosurePage(DetailPage):
                                 # 기타 업종
                                 base_rate = random.uniform(8.0, 22.0)
                                 base_count = random.randint(5000, 20000)
-                            
+
                             # 성별에 따른 미세 조정
                             if gender == '여자':
                                 closure_rate = round(base_rate + random.uniform(0, 3.0), 1)
@@ -393,14 +395,14 @@ class AgeClosurePage(DetailPage):
                             else:  # 합계
                                 closure_rate = round(base_rate, 1)
                                 closure_count = base_count
-                            
+
                             # 최소값 보정
                             closure_rate = max(closure_rate, 1.0)
                             closure_count = max(closure_count, 100)
-                            
+
                             # 폐업자 수와 폐업률을 함께 표시하는 형태로 데이터 생성
                             combined_value = f"{closure_count:,}명 | {closure_rate}%"
-                            
+
                             sample_data.append({
                                 'PRD_DE': str(year),
                                 'C1_NM': region,
@@ -411,7 +413,7 @@ class AgeClosurePage(DetailPage):
                                 'DT': combined_value,
                                 'UNIT_NM': ''  # 단위는 이미 값에 포함되어 있음
                             })
-        
+
         print(f"생성된 샘플 데이터 개수: {len(sample_data)}")
         return sample_data
 
@@ -419,38 +421,65 @@ class AgeClosurePage(DetailPage):
         """행렬 형태의 테이블 생성 (KOSIS 스타일)"""
         # 데이터 구조 분석 및 행렬 형태로 변환
         matrix_data = self.prepare_matrix_data(data)
-        
-        # 스크롤 가능한 캔버스 프레임 생성
-        canvas = tk.Canvas(self.table_frame, bg="white")
-        scrollbar_v = ttk.Scrollbar(self.table_frame, orient="vertical", command=canvas.yview)
-        scrollbar_h = ttk.Scrollbar(self.table_frame, orient="horizontal", command=canvas.xview)
-        scrollable_frame = tk.Frame(canvas, bg="white")
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar_v.set, xscrollcommand=scrollbar_h.set)
-        
-        # 행렬 테이블 생성
-        self.create_matrix_grid(scrollable_frame, matrix_data)
-        
-        # 위젯 배치
-        canvas.grid(row=0, column=0, sticky="nsew")
+
+        # 메인 컨테이너 프레임
+        main_container = tk.Frame(self.table_frame, bg="white")
+        main_container.pack(fill=tk.BOTH, expand=True)
+
+        # 1. 헤더를 Canvas에 올림
+        header_canvas = tk.Canvas(main_container, height=70, bg="white", highlightthickness=0)
+        header_canvas.pack(fill=tk.X, side=tk.TOP, anchor='n')
+
+        header_frame = tk.Frame(header_canvas, bg="white")
+        header_canvas.create_window((0, 0), window=header_frame, anchor='nw')
+
+        # 2. 데이터 영역도 Canvas
+        data_container = tk.Frame(main_container, bg="white")
+        data_container.pack(fill=tk.BOTH, expand=True, side=tk.BOTTOM)
+
+        data_canvas = tk.Canvas(data_container, bg="white", highlightthickness=0)
+        scrollbar_h = ttk.Scrollbar(data_container, orient="horizontal")
+        scrollbar_v = ttk.Scrollbar(data_container, orient="vertical")
+
+        scrollable_frame = tk.Frame(data_canvas, bg="white")
+        data_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+
+        # 스크롤 동기화 설정
+        data_canvas.configure(yscrollcommand=scrollbar_v.set, xscrollcommand=scrollbar_h.set)
+        header_canvas.configure(xscrollcommand=scrollbar_h.set)
+        scrollbar_h.config(command=lambda *args: [data_canvas.xview(*args), header_canvas.xview(*args)])
+        scrollbar_v.config(command=data_canvas.yview)
+
+        # 배치 (data_container 내부는 grid만!)
+        data_canvas.grid(row=0, column=0, sticky="nsew")
         scrollbar_v.grid(row=0, column=1, sticky="ns")
-        scrollbar_h.grid(row=1, column=0, sticky="ew")
-        
-        # 그리드 가중치 설정
-        self.table_frame.grid_rowconfigure(0, weight=1)
-        self.table_frame.grid_columnconfigure(0, weight=1)
+        scrollbar_h.grid(row=1, column=0, columnspan=2, sticky="ew")
+
+        data_container.grid_rowconfigure(0, weight=1)
+        data_container.grid_columnconfigure(0, weight=1)
+        # 오른쪽 아래 빈 공간(코너)은 필요시 비워둠
+        data_container.grid_rowconfigure(0, weight=1)
+        data_container.grid_columnconfigure(0, weight=1)
+
+        # 헤더/데이터 프레임 크기 동기화
+        def sync_header_width(event=None):
+            header_canvas.configure(scrollregion=header_canvas.bbox("all"))
+            data_canvas.configure(scrollregion=data_canvas.bbox("all"))
+            header_canvas.itemconfig('all', width=scrollable_frame.winfo_width())
+
+        scrollable_frame.bind("<Configure>", sync_header_width)
+        header_frame.bind("<Configure>", sync_header_width)
+
+        # 3. 헤더/데이터 생성
+        self.create_fixed_header(header_frame, matrix_data)
+        self.create_data_rows(scrollable_frame, matrix_data)
+
 
     def prepare_matrix_data(self, data):
         """데이터를 행렬 형태로 변환"""
         matrix = {}
         years = sorted(list(set([item.get('PRD_DE', '') for item in data])))
-        
+
         for item in data:
             business = item.get('C4_NM', '')
             age = item.get('C2_NM', '')
@@ -458,68 +487,22 @@ class AgeClosurePage(DetailPage):
             year = item.get('PRD_DE', '')
             value = item.get('DT', '')
             unit = item.get('UNIT_NM', '')
-            
+
             if business not in matrix:
                 matrix[business] = {}
             if age not in matrix[business]:
                 matrix[business][age] = {}
             if gender not in matrix[business][age]:
                 matrix[business][age][gender] = {}
-            
-            matrix[business][age][gender][year] = f"{value}{unit}"
-        
-        return matrix, years
 
-    def create_matrix_table(self, data):
-        """행렬 형태의 테이블 생성 (KOSIS 스타일) - 고정 헤더 추가"""
-        # 데이터 구조 분석 및 행렬 형태로 변환
-        matrix_data = self.prepare_matrix_data(data)
-        
-        # 메인 컨테이너 프레임
-        main_container = tk.Frame(self.table_frame, bg="white")
-        main_container.pack(fill=tk.BOTH, expand=True)
-        
-        # 고정 헤더 프레임 (스크롤되지 않음)
-        header_frame = tk.Frame(main_container, bg="white")
-        header_frame.pack(fill=tk.X, side=tk.TOP)
-        
-        # 데이터 영역 프레임 (스크롤 가능)
-        data_container = tk.Frame(main_container, bg="white")
-        data_container.pack(fill=tk.BOTH, expand=True, side=tk.BOTTOM)
-        
-        # 헤더 생성
-        self.create_fixed_header(header_frame, matrix_data)
-        
-        # 스크롤 가능한 데이터 영역 생성
-        canvas = tk.Canvas(data_container, bg="white")
-        scrollbar_v = ttk.Scrollbar(data_container, orient="vertical", command=canvas.yview)
-        scrollbar_h = ttk.Scrollbar(data_container, orient="horizontal", command=canvas.xview)
-        scrollable_frame = tk.Frame(canvas, bg="white")
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar_v.set, xscrollcommand=scrollbar_h.set)
-        
-        # 데이터 부분만 생성 (헤더 제외)
-        self.create_data_rows(scrollable_frame, matrix_data)
-        
-        # 위젯 배치
-        canvas.grid(row=0, column=0, sticky="nsew")
-        scrollbar_v.grid(row=0, column=1, sticky="ns")
-        scrollbar_h.grid(row=1, column=0, sticky="ew")
-        
-        # 그리드 가중치 설정
-        data_container.grid_rowconfigure(0, weight=1)
-        data_container.grid_columnconfigure(0, weight=1)
+            matrix[business][age][gender][year] = f"{value}{unit}"
+
+        return matrix, years
 
     def create_fixed_header(self, parent, matrix_data):
         """고정 헤더 생성"""
         matrix, years = matrix_data
-        
+
         # 헤더 스타일 설정
         header_style = {
             'bg': '#E6F3FF',
@@ -528,24 +511,24 @@ class AgeClosurePage(DetailPage):
             'font': ('Arial', 9, 'bold'),
             'anchor': 'center'
         }
-        
+
         row = 0
-        
+
         # 최상단 헤더 (년도별 구분)
         tk.Label(parent, text="업태별", width=25, height=3, **header_style).grid(
             row=row, column=0, rowspan=3, sticky="nsew")
         tk.Label(parent, text="연령별", width=12, height=3, **header_style).grid(
             row=row, column=1, rowspan=3, sticky="nsew")
-        
+
         # 년도 헤더
         col_start = 2
         for year in years:
             tk.Label(parent, text=f"{year}년", width=60, **header_style).grid(
                 row=row, column=col_start, columnspan=6, sticky="nsew")
             col_start += 6
-        
+
         row += 1
-        
+
         # 성별 헤더
         col_start = 2
         for year in years:
@@ -554,9 +537,9 @@ class AgeClosurePage(DetailPage):
                 tk.Label(parent, text=gender, width=20, **header_style).grid(
                     row=row, column=col_start, columnspan=2, sticky="nsew")
                 col_start += 2
-        
+
         row += 1
-        
+
         # 구분 헤더 (폐업자수/폐업률)
         col_start = 2
         for year in years:
@@ -570,7 +553,7 @@ class AgeClosurePage(DetailPage):
     def create_data_rows(self, parent, matrix_data):
         """데이터 행만 생성 (헤더 제외)"""
         matrix, years = matrix_data
-        
+
         cell_style = {
             'bg': 'white',
             'relief': 'solid',
@@ -578,33 +561,33 @@ class AgeClosurePage(DetailPage):
             'font': ('Arial', 8),
             'anchor': 'center'
         }
-        
+
         row = 0
-        
+
         # 데이터 행 생성
         for business_type in sorted(matrix.keys()):
             business_data = matrix[business_type]
             age_groups = sorted(business_data.keys())
-            
+
             for i, age_group in enumerate(age_groups):
                 age_data = business_data[age_group]
-                
+
                 # 첫 번째 연령대일 때만 업태명 표시
                 if i == 0:
                     business_label = tk.Label(parent, text=business_type, width=25, **cell_style)
                     business_label.grid(row=row, column=0, rowspan=len(age_groups), sticky="nsew")
-                
-                # 연령대명
+
+                # 연령대 명
                 age_label = tk.Label(parent, text=age_group, width=12, **cell_style)
                 age_label.grid(row=row, column=1, sticky="nsew")
-                
+
                 # 데이터 셀 - 폐업자 수와 폐업률을 별도 열로 분리
                 col = 2
                 for year in years:
                     genders = ['합계', '남자', '여자']
                     for gender in genders:
                         original_value = age_data.get(gender, {}).get(year, '-')
-                        
+
                         # 원본 데이터에서 폐업자 수와 폐업률 분리
                         if original_value != '-' and '|' in original_value:
                             parts = original_value.split('|')
@@ -613,27 +596,24 @@ class AgeClosurePage(DetailPage):
                         else:
                             count_part = '-'
                             rate_part = '-'
-                        
+
                         # 폐업자 수 열
                         count_label = tk.Label(parent, text=count_part, width=10, **cell_style)
                         count_label.grid(row=row, column=col, sticky="nsew")
-                        
+
                         # 폐업률 열
                         rate_label = tk.Label(parent, text=rate_part, width=10, **cell_style)
                         rate_label.grid(row=row, column=col+1, sticky="nsew")
-                        
+
                         col += 2
-                
+
                 row += 1
-
-
-
 
     def format_number(self, value):
         """숫자 값에 천 단위 콤마 추가"""
         if value is None or value == '':
             return ''
-        
+
         try:
             num_str = str(value).replace(',', '')
             if '.' in num_str:
@@ -642,8 +622,9 @@ class AgeClosurePage(DetailPage):
                 return f"{int(num_str):,}"
         except (ValueError, AttributeError):
             pass
-        
+
         return str(value)
+
 
 
 
@@ -1005,27 +986,343 @@ class FranchiseClosurePage(DetailPage):
 
 
 class RegionalClosurePage(DetailPage):
-    """지역별 폐업사유 페이지"""
-    def __init__(self, parent, controller):
-        DetailPage.__init__(self, parent, controller, 
-                          "지역별 폐업 통계", "폐업사유,지역,업태")
-        
-        # 여기에 데이터 시각화 내용 추가
-        self.fig = plt.Figure(figsize=(10, 6), dpi=100)
-        self.ax = self.fig.add_subplot(111)
-        
-        # 샘플 데이터
-        regions = ['서울', '경기', '인천', '부산', '대구', '기타']
-        values = [35, 25, 15, 10, 8, 7]
-        
-        self.ax.pie(values, labels=regions, autopct='%1.1f%%')
-        self.ax.set_title('지역별 폐업 비율')
-        
-        canvas = FigureCanvasTkAgg(self.fig, self.content_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    """지역별 폐업사유 분석 페이지 (CSV 분석 및 조회 버튼 정상 동작)"""
 
-        ########################################################################################################################################
+    def __init__(self, parent, controller):
+        DetailPage.__init__(self, parent, controller,
+            "지역별 폐업사유 통계", "과세유형, 지역/업태, 폐업사유별 현황")
+
+        # CSV 파일 경로 (절대경로로 처리)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.csv_path = os.path.join(
+            current_dir,
+            "9.8.13_폐업자_현황_Ⅳ__폐업사유__지역__업태_2005_20250525201244.csv"
+        )
+
+        # 컨트롤 프레임
+        self.control_frame = tk.Frame(self.content_frame, bg="white")
+        self.control_frame.pack(fill=tk.X, pady=10)
+
+        tk.Label(self.control_frame, text="조회 년도:", bg="white").pack(side=tk.LEFT, padx=5)
+        self.year_var = tk.StringVar(value="2023")
+        self.year_combo = ttk.Combobox(
+            self.control_frame, textvariable=self.year_var,
+            values=[str(y) for y in range(2019, 2024)], width=8
+        )
+        self.year_combo.pack(side=tk.LEFT, padx=5)
+
+        self.search_button = tk.Button(
+            self.control_frame, text="데이터 불러오기",
+            command=self.start_loading, bg="#4CAF50"
+        )
+        self.search_button.pack(side=tk.LEFT, padx=10)
+
+        self.home_button = tk.Button(
+            self.control_frame, text="메인으로 돌아가기",
+            command=lambda: controller.show_frame(MainPage),
+            bg="#2196F3", font=("Arial", 10, "bold")
+        )
+        self.home_button.pack(side=tk.LEFT, padx=5)
+
+        # 테이블 프레임
+        self.table_frame = tk.Frame(self.content_frame, bg="white")
+        self.table_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+
+        # 정보 표시 프레임
+        self.info_frame = tk.Frame(self.content_frame, bg="white")
+        self.info_frame.pack(fill=tk.X, pady=5)
+
+        self.show_initial_message()
+
+    def show_initial_message(self, text=None):
+        """초기 메시지 표시"""
+        for widget in self.table_frame.winfo_children():
+            widget.destroy()
+        for widget in self.info_frame.winfo_children():
+            widget.destroy()
+            
+        initial_text = text or "년도를 선택하고 '데이터 불러오기' 버튼을 클릭하세요.\n\n※ 데이터 로딩에 시간이 소요될 수 있습니다."
+        initial_label = tk.Label(self.table_frame,
+                                text=initial_text,
+                                bg="white",
+                                font=("Arial", 12),
+                                fg="gray")
+        initial_label.pack(pady=80)
+
+    def start_loading(self):
+        """별도 스레드에서 데이터 로딩 시작"""
+        self.search_button.config(state=tk.DISABLED)
+        self._show_loading_message()
+        threading.Thread(target=self.load_data, daemon=True).start()
+
+    def _show_loading_message(self):
+        for widget in self.table_frame.winfo_children():
+            widget.destroy()
+        for widget in self.info_frame.winfo_children():
+            widget.destroy()
+            
+        self.loading_label = tk.Label(self.table_frame, 
+                                     text="데이터를 불러오는 중...", 
+                                     fg="blue", bg="white", font=("Arial", 14))
+        self.loading_label.pack(pady=50)
+
+    def load_data(self):
+        try:
+            selected_year = self.year_var.get()
+            raw_data = self.load_csv_data()
+            table_data = self.refine_data(raw_data, selected_year)
+            self.table_frame.after(0, self.update_table, table_data, selected_year)
+        except Exception as e:
+            self.table_frame.after(0, self.show_error, str(e))
+        finally:
+            self.table_frame.after(0, self.search_button.config, {'state': tk.NORMAL})
+
+    def load_csv_data(self):
+        """CSV 파일 로드"""
+        try:
+            return pd.read_csv(self.csv_path, encoding='utf-8-sig')
+        except Exception:
+            return pd.read_csv(self.csv_path, encoding='cp949')
+
+    def clean_code_name(self, value):
+        """코드+이름 형태에서 이름만 추출"""
+        if pd.isna(value) or value == '':
+            return ''
+        
+        value_str = str(value).strip()
+        
+        # 패턴 1: "15133SEJ01 법인사업자" -> "법인사업자"
+        # 패턴 2: "B03 서울" -> "서울"  
+        # 패턴 3: "소계" -> "소계"
+        match = re.search(r'^[A-Z0-9]+\s+(.+)', value_str)
+        if match:
+            return match.group(1).strip()
+        
+        return value_str
+
+    def clean_year(self, value):
+        """Y2023 2023 -> 2023"""
+        if pd.isna(value) or value == '':
+            return ''
+        
+        value_str = str(value).strip()
+        # "Y2023 2023"에서 마지막 4자리 숫자 추출
+        match = re.search(r'(\d{4})$', value_str)
+        if match:
+            return match.group(1)
+        
+        return value_str
+
+    def refine_data(self, raw_data, year):
+        """데이터 정제 및 코드 제거 - 지역별/업태별 구분하여 정렬"""
+        # 해당 연도 데이터만 필터링
+        filtered = raw_data[raw_data['TIME 시점'].astype(str).str.contains(f'Y{year}')]
+        
+        refined = []
+        for _, row in filtered.iterrows():
+            # 각 컬럼에서 코드 제거하고 깔끔하게 정리
+            refined_row = {
+                '과세유형': self.clean_code_name(row['15133SEJ 과세유형별(1)']),
+                '지역/업태 구분': self.clean_code_name(row['13301B 시도․업태별(1)']),
+                '세부지역/업태': self.clean_code_name(row['13301B 시도․업태별(2)']),
+                '시점': self.clean_year(row['TIME 시점']),
+                '총계': self.format_number(row.get('16133T2008_0245 총계', '-')),
+                '사업부진': self.format_number(row.get('16133T2008_0418 사업부진', '-')),
+                '행정처분': self.format_number(row.get('16133T2008_0419 행정처분', '-')),
+                '계절사업': self.format_number(row.get('16133T2008_0420 계절사업', '-')),
+                '법인전환': self.format_number(row.get('16133T2008_0421 법인전환', '-')),
+                '면세포기·적용': self.format_number(row.get('16133T2008_0422 면세포기·적용', '-')),
+                '양도·양수': self.format_number(row.get('T001 양도·양수', '-')),
+                '해산·합병': self.format_number(row.get('16133T2008_0425 해산·합병', '-')),
+                '기타': self.format_number(row.get('16133ABA7 기타', '-')),
+            }
+            refined.append(refined_row)
+        
+        # 지역별/업태별 구분을 위한 정렬
+        # 1. 과세유형 -> 2. 지역/업태 구분 -> 3. 세부지역/업태 순으로 정렬
+        refined.sort(key=lambda x: (x['과세유형'], x['지역/업태 구분'], x['세부지역/업태']))
+        
+        return refined
+
+    def update_table(self, data, year):
+        """테이블 업데이트"""
+        for widget in self.table_frame.winfo_children():
+            widget.destroy()
+        for widget in self.info_frame.winfo_children():
+            widget.destroy()
+            
+        if not data:
+            self.show_initial_message(f"{year}년 데이터가 없습니다")
+            return
+            
+        self.create_grouped_table(data)
+        
+        # 정보 표시
+        info_text = f"{year}년 데이터 총 {len(data):,}건 로드 완료"
+        info_label = tk.Label(self.info_frame, 
+                             text=info_text, 
+                             bg="white", 
+                             fg="blue", 
+                             font=("Arial", 10))
+        info_label.pack(side=tk.LEFT)
+        
+        # 추가 정보
+        detail_info = tk.Label(self.info_frame,
+                              text="※ 지역별/업태별 그룹으로 구분하여 표시",
+                              bg="white",
+                              fg="gray",
+                              font=("Arial", 9))
+        detail_info.pack(side=tk.RIGHT)
+
+    def create_grouped_table(self, data):
+        """지역별/업태별 그룹으로 구분된 테이블 생성"""
+        # 스크롤 가능한 테이블 컨테이너
+        canvas = tk.Canvas(self.table_frame, bg="white")
+        scrollbar_v = ttk.Scrollbar(self.table_frame, orient="vertical", command=canvas.yview)
+        scrollbar_h = ttk.Scrollbar(self.table_frame, orient="horizontal", command=canvas.xview)
+        scrollable_frame = tk.Frame(canvas, bg="white")
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar_v.set, xscrollcommand=scrollbar_h.set)
+
+        # 헤더 생성
+        headers = list(data[0].keys()) if data else []
+        header_widths = [15, 12, 18, 8, 12, 10, 10, 10, 10, 12, 10, 10, 10]
+        
+        for col, (header, width) in enumerate(zip(headers, header_widths)):
+            header_label = tk.Label(scrollable_frame, 
+                                   text=header, 
+                                   bg="#4A5C90", 
+                                   fg="white",
+                                   relief="solid",
+                                   borderwidth=1, 
+                                   font=('Arial', 9, 'bold'),
+                                   width=width,
+                                   anchor='center')
+            header_label.grid(row=0, column=col, sticky="nsew", padx=1, pady=1)
+        
+        # 데이터를 그룹별로 분류
+        grouped_data = self.group_data_by_category(data)
+        
+        row_idx = 1
+        
+        # 그룹별로 데이터 표시
+        for group_key, group_data in grouped_data.items():
+            # 그룹 헤더 추가 (지역별 또는 업태별 구분)
+            group_header_color = "#E8F4FD" if "지역별" in group_key else "#FFF2E8"
+            
+            # 그룹명 표시 (전체 컬럼에 걸쳐서)
+            group_label = tk.Label(scrollable_frame, 
+                                 text=f"▼ {group_key}",
+                                 bg=group_header_color,
+                                 relief="solid",
+                                 borderwidth=1,
+                                 font=('Arial', 9, 'bold'),
+                                 anchor='w',
+                                 padx=10)
+            group_label.grid(row=row_idx, column=0, columnspan=len(headers), 
+                           sticky="nsew", padx=1, pady=2)
+            row_idx += 1
+            
+            # 그룹 내 데이터 표시
+            for item_idx, item in enumerate(group_data):
+                # 그룹 내에서 교대로 색상 적용
+                if item_idx % 2 == 0:
+                    bg_color = '#F8F9FA'
+                else:
+                    bg_color = 'white'
+                
+                for col, (key, width) in enumerate(zip(headers, header_widths)):
+                    cell_value = item.get(key, '-')
+                    
+                    # 첫 번째 컬럼(과세유형)은 그룹 내에서 중복 제거
+                    if col == 0 and item_idx > 0 and item.get(key) == group_data[item_idx-1].get(key):
+                        cell_value = ""
+                    
+                    cell_label = tk.Label(scrollable_frame, 
+                                         text=cell_value, 
+                                         bg=bg_color,
+                                         relief="solid", 
+                                         borderwidth=1, 
+                                         font=('Arial', 8),
+                                         width=width,
+                                         anchor='center')
+                    cell_label.grid(row=row_idx, column=col, sticky="nsew", padx=1, pady=1)
+                
+                row_idx += 1
+            
+            # 그룹 간 구분선 추가
+            separator = tk.Frame(scrollable_frame, height=3, bg="#DDDDDD")
+            separator.grid(row=row_idx, column=0, columnspan=len(headers), 
+                          sticky="ew", padx=1, pady=2)
+            row_idx += 1
+
+        # 위젯 배치
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar_v.grid(row=0, column=1, sticky="ns")
+        scrollbar_h.grid(row=1, column=0, sticky="ew")
+        
+        # 그리드 가중치 설정
+        self.table_frame.grid_rowconfigure(0, weight=1)
+        self.table_frame.grid_columnconfigure(0, weight=1)
+
+    def group_data_by_category(self, data):
+        """데이터를 지역별/업태별로 그룹화"""
+        grouped = {}
+        
+        for item in data:
+            tax_type = item.get('과세유형', '')
+            category = item.get('지역/업태 구분', '')
+            
+            # 그룹 키 생성
+            group_key = f"{tax_type} - {category}"
+            
+            if group_key not in grouped:
+                grouped[group_key] = []
+            
+            grouped[group_key].append(item)
+        
+        return grouped
+
+    def show_error(self, message):
+        """오류 메시지 표시"""
+        for widget in self.table_frame.winfo_children():
+            widget.destroy()
+        for widget in self.info_frame.winfo_children():
+            widget.destroy()
+            
+        error_label = tk.Label(self.table_frame,
+                              text=f"오류 발생: {message}",
+                              fg="red", bg="white", font=("Arial", 12))
+        error_label.pack(pady=20)
+
+    def format_number(self, value):
+        """숫자 포맷팅 (천 단위 콤마 추가)"""
+        if pd.isna(value) or value in ['', '-']:
+            return '-'
+        try:
+            # 숫자 변환 시도
+            if isinstance(value, (int, float)):
+                return f"{int(value):,}" if value != 0 else '-'
+            
+            # 문자열에서 숫자만 추출
+            num_str = str(value).replace(',', '').strip()
+            if num_str.replace('.', '').replace('-', '').isdigit():
+                num_value = int(float(num_str))
+                return f"{num_value:,}" if num_value != 0 else '-'
+        except (ValueError, TypeError):
+            pass
+        
+        return str(value) if value else '-'
+
+
+
+########################################################################################################################################
 
 class BusinessSurvivalPage(DetailPage):
     """사업 유지율 페이지"""
@@ -1049,6 +1346,7 @@ class BusinessSurvivalPage(DetailPage):
         canvas = FigureCanvasTkAgg(self.fig, self.content_frame)
         canvas.draw()
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
 ########################################################################################################################################
 class NewBusinessPage(DetailPage):
     """신규 사업자 페이지"""

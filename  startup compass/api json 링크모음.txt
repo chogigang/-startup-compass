@@ -11,7 +11,7 @@ https://kosis.kr/openapi/Param/statisticsParameterData.do?method=getList&apiKey=
 https://kosis.kr/openapi/Param/statisticsParameterData.do?method=getList&apiKey=NjE5YzRlMmI2MjM2NTE3MjM3N2Y5NzY4YmU0OTgxZTc=&itmId=H001+&objL1=ALL&objL2=ALL&objL3=ALL&objL4=&objL5=&objL6=&objL7=&objL8=&format=json&jsonVD=Y&prdSe=Y&startPrdDe=2014&endPrdDe=2023&outputFields=ORG_ID+TBL_ID+TBL_NM+OBJ_ID+OBJ_NM+OBJ_NM_ENG+NM+NM_ENG+ITM_ID+ITM_NM+ITM_NM_ENG+UNIT_NM+UNIT_NM_ENG+PRD_SE+PRD_DE+LST_CHN_DE+&orgId=133&tblId=DT_13301N_9811
 
 폐업자 현황 4 (폐업사유,지역,업태)
-https://kosis.kr/openapi/Param/statisticsParameterData.do?method=getList&apiKey=NjE5YzRlMmI2MjM2NTE3MjM3N2Y5NzY4YmU0OTgxZTc=&itmId=T01+&objL1=ALL&objL2=ALL&objL3=ALL&objL4=&objL5=&objL6=&objL7=&objL8=&format=json&jsonVD=Y&prdSe=Y&startPrdDe=2005&endPrdDe=2023&outputFields=ORG_ID+TBL_ID+TBL_NM+OBJ_ID+OBJ_NM+OBJ_NM_ENG+NM+NM_ENG+ITM_ID+ITM_NM+ITM_NM_ENG+UNIT_NM+UNIT_NM_ENG+PRD_SE+PRD_DE+LST_CHN_DE+&orgId=133&tblId=TX_13301_A169
+https://kosis.kr/openapi/Param/statisticsParameterData.do?method=getList&apiKey=NjE5YzRlMmI2MjM2NTE3MjM3N2Y5NzY4YmU0OTgxZTc=&itmId=T01+&objL1=ALL&objL2=ALL&objL3=ALL&objL4=&objL5=&objL6=&objL7=&objL8=&format=json&jsonVD=Y&prdSe=Y&startPrdDe=2019&endPrdDe=2023&outputFields=TBL_NM+OBJ_NM+NM+ITM_NM+UNIT_NM+&orgId=133&tblId=TX_13301_A169
 
 폐업자 현황 5 (사업존속연수 ,지역,업태)
 https://kosis.kr/openapi/Param/statisticsParameterData.do?method=getList&apiKey=NjE5YzRlMmI2MjM2NTE3MjM3N2Y5NzY4YmU0OTgxZTc=&itmId=T01+&objL1=ALL&objL2=ALL&objL3=ALL&objL4=&objL5=&objL6=&objL7=&objL8=&format=json&jsonVD=Y&prdSe=Y&startPrdDe=2005&endPrdDe=2023&outputFields=ORG_ID+TBL_ID+TBL_NM+OBJ_ID+OBJ_NM+OBJ_NM_ENG+NM+NM_ENG+ITM_ID+ITM_NM+ITM_NM_ENG+UNIT_NM+UNIT_NM_ENG+PRD_SE+PRD_DE+LST_CHN_DE+&orgId=133&tblId=TX_13301_A171
