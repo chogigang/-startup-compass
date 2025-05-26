@@ -6,7 +6,7 @@ from tkinter import ttk,scrolledtext
 import webbrowser
 import threading
 import time
-import threading
+
 
 # 데이터 시각화를 위한 라이브러리
 import matplotlib.pyplot as plt
@@ -986,7 +986,7 @@ class FranchiseClosurePage(DetailPage):
 
 
 class RegionalClosurePage(DetailPage):
-    """지역별 폐업사유 분석 페이지 (CSV 분석 및 조회 버튼 정상 동작)"""
+    """지역별 폐업사유 분석 페이지 """
 
     def __init__(self, parent, controller):
         DetailPage.__init__(self, parent, controller,
@@ -1325,27 +1325,261 @@ class RegionalClosurePage(DetailPage):
 ########################################################################################################################################
 
 class BusinessSurvivalPage(DetailPage):
-    """사업 유지율 페이지"""
+    """사업 유지율 통계 페이지 - ttk.Treeview 사용, 헤더에서 연도 제거"""
+
     def __init__(self, parent, controller):
-        DetailPage.__init__(self, parent, controller, 
-                          "사업 유지율", "존속,연수,지역,업태")
+        DetailPage.__init__(self, parent, controller,
+                          "사업 유지율 통계", "과세유형, 사업존속연수, 지역, 업태별 가동사업자 현황")
+
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.csv_path = os.path.join(
+            current_dir,
+            "9.8.7_가동사업자_현황Ⅱ__사업존속연수_지역_업태_2007_20250526210827.csv"
+        )
+
+        self.control_frame = tk.Frame(self.content_frame, bg="white")
+        self.control_frame.pack(fill=tk.X, pady=10)
+
+        tk.Label(self.control_frame, text="조회 년도:", bg="white").pack(side=tk.LEFT, padx=5)
+        self.year_var = tk.StringVar(value="2023")
+        self.year_combo = ttk.Combobox(
+            self.control_frame, textvariable=self.year_var,
+            values=[str(y) for y in range(2019, 2024)], width=8
+        )
+        self.year_combo.pack(side=tk.LEFT, padx=5)
         
-        # 여기에 데이터 시각화 내용 추가
-        self.fig = plt.Figure(figsize=(10, 6), dpi=100)
-        self.ax = self.fig.add_subplot(111)
+        self.search_button = tk.Button(
+            self.control_frame, text="데이터 불러오기",
+            command=self.start_loading, bg="#4CAF50", fg="black"
+        )
+        self.search_button.pack(side=tk.LEFT, padx=10)
+
+        self.home_button = tk.Button(
+            self.control_frame, text="메인으로 돌아가기",
+            command=lambda: controller.show_frame(MainPage),
+            bg="#2196F3", font=("Arial", 10, "bold")
+        )
+        self.home_button.pack(side=tk.LEFT, padx=5)
+
+        self.table_frame = tk.Frame(self.content_frame, bg="white") # tree_view_frame -> table_frame (일관성)
+        self.table_frame.pack(fill=tk.BOTH, expand=True, pady=10)
         
-        # 샘플 데이터
-        years = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        survival_rates = [100, 80, 65, 55, 45, 38, 32, 28, 25, 22]
+        self.info_frame = tk.Frame(self.content_frame, bg="white")
+        self.info_frame.pack(fill=tk.X, pady=5)
+
+        self.tree = None
+
+        self.show_initial_message()
+
+    def show_initial_message(self, text=None):
+        for widget in self.table_frame.winfo_children(): widget.destroy()
+        for widget in self.info_frame.winfo_children(): widget.destroy()
+        initial_text = text or "년도를 선택하고 '데이터 불러오기' 버튼을 클릭하세요.\n\n※ 데이터 로딩에 시간이 소요될 수 있습니다."
+        tk.Label(self.table_frame, text=initial_text, bg="white", font=("Arial", 12), fg="gray").pack(pady=80)
+
+    def start_loading(self):
+        self.search_button.config(state=tk.DISABLED)
+        self._show_loading_message()
+        threading.Thread(target=self.load_data, daemon=True).start()
+
+    def _show_loading_message(self):
+        for widget in self.table_frame.winfo_children(): widget.destroy()
+        for widget in self.info_frame.winfo_children(): widget.destroy()
+        tk.Label(self.table_frame, text="데이터를 불러오는 중...", fg="blue", bg="white", font=("Arial", 14)).pack(pady=50)
+
+    def load_data(self):
+        try:
+            raw_data_df = self.load_csv_data()
+            if raw_data_df is None:
+                self.table_frame.after(0, self.show_error, "CSV 파일을 로드하지 못했습니다.")
+                return
+
+            table_data, years_for_table, periods_for_table = self.refine_data(raw_data_df)
+            
+            if table_data is None: return
+            self.table_frame.after(0, self.update_table, table_data, years_for_table, periods_for_table)
+        except Exception as e:
+            self.table_frame.after(0, self.show_error, f"데이터 처리 중 예외 발생: {e}")
+        finally:
+            if hasattr(self, 'search_button') and self.search_button.winfo_exists():
+                 self.table_frame.after(0, lambda: self.search_button.config(state=tk.NORMAL))
+
+    def load_csv_data(self):
+        try:
+            df = pd.read_csv(self.csv_path, encoding='utf-8-sig', header=[0, 1])
+            return df
+        except UnicodeDecodeError:
+            try:
+                df = pd.read_csv(self.csv_path, encoding='cp949', header=[0, 1])
+                return df
+            except Exception: return None
+        except Exception: return None
+
+    def clean_identifier_value(self, value):
+        if pd.isna(value) or str(value).strip() == '': return ''
+        value_str = str(value).strip()
+        match_code = re.search(r'^[A-Z0-9]+\s*(.+)', value_str)
+        cleaned_val = match_code.group(1).strip() if match_code else value_str
+        cleaned_val = re.sub(r'\s*\(\d\)$', '', cleaned_val).strip()
+        return cleaned_val
+    
+    def format_number(self, value):
+        if pd.isna(value) or str(value).strip() == '-': return '-'
+        try:
+            num_str = str(value).replace(',', '').strip()
+            if num_str.replace('.', '', 1).replace('-', '', 1).isdigit():
+                num_val = float(num_str)
+                return f"{int(num_val):,}" if num_val == int(num_val) else f"{num_val:,.0f}"
+        except (ValueError, TypeError): pass
+        return str(value)
+
+    def refine_data(self, raw_data_df):
+        refined_list = []
+        try:
+            id_cols_map = {}
+            if len(raw_data_df.columns) >= 3:
+                id_cols_map[raw_data_df.columns[0]] = '과세유형'
+                id_cols_map[raw_data_df.columns[1]] = '구분1'
+                id_cols_map[raw_data_df.columns[2]] = '구분2'
+            else:
+                self.table_frame.after(0, self.show_error, "CSV 식별자 컬럼이 3개 미만입니다.")
+                return None, None, None
+            
+            data_cols_actual = [col for col in raw_data_df.columns if col not in id_cols_map.keys()]
+            years_in_data_raw = []
+            if data_cols_actual:
+                years_in_data_raw = sorted(list(set(
+                    col[0] for col in data_cols_actual
+                    if isinstance(col, tuple) and len(col) > 0 and isinstance(col[0], str) and re.match(r'^\d{4}$', col[0])
+                )), reverse=True)
+            
+            if not years_in_data_raw:
+                self.table_frame.after(0, self.show_error, "컬럼에서 연도 정보를 찾을 수 없습니다.")
+                return None, None, None
+            years_in_data = years_in_data_raw
+
+            ordered_survival_periods = ['총계', '6월미만', '6월이상', '1년이상', '2년이상', '3년이상', '5년 이상', '10년 이상', '20년 이상', '30년 이상']
+            available_periods_in_header = []
+            if data_cols_actual and years_in_data_raw:
+                first_year_raw_for_period_check = years_in_data_raw[0]
+                available_periods_in_header = sorted(list(set(
+                    col[1] for col in data_cols_actual
+                    if isinstance(col, tuple) and len(col) > 1 and col[0] == first_year_raw_for_period_check
+                )))
+            
+            survival_periods_to_display = [p for p in ordered_survival_periods if p in available_periods_in_header]
+            if not survival_periods_to_display and available_periods_in_header:
+                survival_periods_to_display = available_periods_in_header
+            if not survival_periods_to_display:
+                 self.table_frame.after(0, self.show_error, "사업존속기간 정보를 컬럼에서 찾을 수 없습니다.")
+                 return None, years_in_data, []
+
+            for _, row in raw_data_df.iterrows():
+                refined_row = {}
+                for actual_col_key, display_name in id_cols_map.items():
+                    refined_row[display_name] = self.clean_identifier_value(row.get(actual_col_key, ''))
+                for year_str in years_in_data:
+                    for period in survival_periods_to_display:
+                        col_key_for_value = (year_str, period)
+                        value = row.get(col_key_for_value, '-')
+                        refined_row[f'{year_str}_{period}'] = self.format_number(value)
+                refined_list.append(refined_row)
+            
+            refined_list.sort(key=lambda x: (x.get('과세유형',''), x.get('구분1',''), x.get('구분2','')))
+            return refined_list, years_in_data, survival_periods_to_display
+        except Exception as e_gen:
+            import traceback; traceback.print_exc()
+            self.table_frame.after(0, self.show_error, f"데이터 정제 중 오류: {e_gen}")
+            return None, None, None
+
+    def update_table(self, data, years_for_table, periods_for_table): # 메소드명 일관성 유지
+        for widget in self.table_frame.winfo_children(): widget.destroy()
+        for widget in self.info_frame.winfo_children(): widget.destroy()
+            
+        if not data or not periods_for_table or not years_for_table:
+            self.show_initial_message("데이터 또는 헤더 정보가 부족하여 테이블을 생성할 수 없습니다.")
+            return
+            
+        self.create_treeview_for_survival(data, years_for_table, periods_for_table) # 새 메소드명
         
-        self.ax.plot(years, survival_rates, marker='o')
-        self.ax.set_title('사업 시작 후 연차별 생존율')
-        self.ax.set_xlabel('사업 연차')
-        self.ax.set_ylabel('생존율 (%)')
+        selected_year_combo = self.year_var.get() # 콤보박스에서 선택된 연도
+        info_text = f"선택한 연도: {selected_year_combo}년, 총 {len(data):,}건 데이터 로드 완료"
+        tk.Label(self.info_frame, text=info_text, bg="white", fg="blue", font=("Arial", 10)).pack(side=tk.LEFT)
+
+    def create_treeview_for_survival(self, data, years_in_data, survival_periods):
+        # Treeview 컬럼 ID 및 표시 이름 정의
+        column_ids = ['col_tax_type', 'col_cat1', 'col_cat2']
+        column_display_names = ['과세유형', '구분1', '구분2']
+        column_widths = [150, 120, 180]
+
+        # 데이터 컬럼 (Treeview 헤더는 사업존속기간만 표시)
+        # 데이터는 모든 연도에 대해 표시되지만, Treeview 컬럼은 기간만큼만 필요
+        # 실제 데이터 삽입 시 (연도, 기간) 조합으로 값을 가져옴
+        for year in years_in_data:
+            for period in survival_periods:
+                # Treeview 컬럼 ID는 고유해야 하므로 연도와 기간을 조합
+                col_id = f"col_{year}_{period.replace(' ', '_').replace('.', '')}"
+                column_ids.append(col_id)
+                # Treeview 헤더는 기간만 표시
+                column_display_names.append(period)
+                column_widths.append(90)
+
+        self.tree = ttk.Treeview(self.table_frame, columns=column_ids, show="headings")
         
-        canvas = FigureCanvasTkAgg(self.fig, self.content_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        vsb = ttk.Scrollbar(self.table_frame, orient="vertical", command=self.tree.yview)
+        hsb = ttk.Scrollbar(self.table_frame, orient="horizontal", command=self.tree.xview)
+        
+        self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+
+        self.tree.grid(row=0, column=0, sticky='nsew')
+        vsb.grid(row=0, column=1, sticky='ns')
+        hsb.grid(row=1, column=0, sticky='ew')
+
+        self.table_frame.grid_rowconfigure(0, weight=1)
+        self.table_frame.grid_columnconfigure(0, weight=1)
+        
+        # 헤더 설정
+        for i, col_id in enumerate(column_ids):
+            self.tree.heading(col_id, text=column_display_names[i], anchor='center')
+            self.tree.column(col_id, width=column_widths[i], anchor='center' if i >=3 else 'w', stretch=tk.NO)
+
+        # 스타일 태그
+        self.tree.tag_configure('group_header_main', font=('Arial', 9, 'bold'), background='#E0E0E0')
+        self.tree.tag_configure('oddrow', background='#F8F9FA')
+        self.tree.tag_configure('evenrow', background='white')
+
+        current_group_main_key = None; current_group_sub_key = None
+        for item_idx, item_data in enumerate(data):
+            group_main_key_val = item_data.get('과세유형', ''); group_sub_key_val = item_data.get('구분1', '')
+            
+            if (group_main_key_val, group_sub_key_val) != (current_group_main_key, current_group_sub_key):
+                current_group_main_key = group_main_key_val; current_group_sub_key = group_sub_key_val
+                group_header_text = f"{group_main_key_val} ({group_sub_key_val})" if group_sub_key_val else f"{group_main_key_val}"
+                group_values = [group_header_text] + [''] * (len(column_ids) - 1)
+                self.tree.insert('', 'end', values=group_values, open=True, tags=('group_header_main',))
+
+            row_values = []
+            row_values.append(item_data.get('과세유형', '-'))
+            row_values.append(item_data.get('구분1', '-'))
+            row_values.append(item_data.get('구분2', '-'))
+            
+            # 데이터 컬럼 값 채우기
+            for year in years_in_data:
+                for period in survival_periods:
+                    row_values.append(item_data.get(f'{year}_{period}', '-'))
+            
+            tag = 'oddrow' if item_idx % 2 == 0 else 'evenrow'
+            self.tree.insert('', 'end', values=row_values, tags=(tag,))
+            
+    def show_error(self, message):
+        for widget in self.table_frame.winfo_children(): widget.destroy()
+        for widget in self.info_frame.winfo_children(): widget.destroy()
+        
+        error_label = tk.Label(self.table_frame, text=f"오류 발생: {message}", fg="red", bg="white", font=("Arial", 12),
+                              wraplength=self.table_frame.winfo_width() - 20 if self.table_frame.winfo_width() > 20 else 300)
+        error_label.pack(pady=20, padx=10)
+
+
 
 ########################################################################################################################################
 class NewBusinessPage(DetailPage):
