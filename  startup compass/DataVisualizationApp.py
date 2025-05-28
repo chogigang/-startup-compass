@@ -19,18 +19,32 @@ from tkinter import messagebox
 from urllib.parse import quote_plus
 
 # matplotlib 설정
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.font_manager as fm
 
 
 # 한글 폰트 설정 (macOS용)
-plt.rcParams['font.family'] = ['AppleGothic']  # macOS
+# plt.rcParams['font.family'] = ['AppleGothic']  # macOS
 # 또는 시스템에 설치된 한글 폰트 사용
 #plt.rcParams['font.family'] = ['Malgun Gothic']  # Windows
 # plt.rcParams['font.family'] = ['NanumGothic']    # Linux
 
 # 마이너스 기호 깨짐 방지
-plt.rcParams['axes.unicode_minus'] = False
+# plt.rcParams['axes.unicode_minus'] = False
+
+
+
+# 한글 폰트 설정 (macOS용)
+try:
+    # 시스템에 설치된 적절한 한글 폰트 이름으로 설정
+    # 예: 'NanumGothic', 'Malgun Gothic' (Windows), 'AppleSDGothicNeo-Regular' (최신 macOS)
+    font_name = fm.FontProperties(family='AppleGothic').get_name() # 설치된 경우 해당 폰트 사용
+    plt.rcParams['font.family'] = font_name
+except RuntimeError: # AppleGothic이 없을 경우 기본 폰트 사용 경고
+    print("경고: AppleGothic 폰트를 찾을 수 없습니다. 그래프의 한글이 깨질 수 있습니다.")
+    # 다른 사용 가능한 한글 폰트 시도 또는 시스템 기본값 사용
+    # 예: plt.rcParams['font.family'] = 'NanumGothic'
+
+plt.rcParams['axes.unicode_minus'] = False # 마이너스 기호 깨짐 방지
 
 
 
@@ -1325,7 +1339,7 @@ class RegionalClosurePage(DetailPage):
 ########################################################################################################################################
 
 class BusinessSurvivalPage(DetailPage):
-    """사업 유지율 통계 페이지 - ttk.Treeview 사용, 헤더에서 연도 제거"""
+    """사업 유지율 통계 페이지 - 선택 연도 필터링 및 중복 총계 제거"""
 
     def __init__(self, parent, controller):
         DetailPage.__init__(self, parent, controller,
@@ -1361,14 +1375,13 @@ class BusinessSurvivalPage(DetailPage):
         )
         self.home_button.pack(side=tk.LEFT, padx=5)
 
-        self.table_frame = tk.Frame(self.content_frame, bg="white") # tree_view_frame -> table_frame (일관성)
+        self.table_frame = tk.Frame(self.content_frame, bg="white")
         self.table_frame.pack(fill=tk.BOTH, expand=True, pady=10)
         
         self.info_frame = tk.Frame(self.content_frame, bg="white")
         self.info_frame.pack(fill=tk.X, pady=5)
 
         self.tree = None
-
         self.show_initial_message()
 
     def show_initial_message(self, text=None):
@@ -1394,10 +1407,12 @@ class BusinessSurvivalPage(DetailPage):
                 self.table_frame.after(0, self.show_error, "CSV 파일을 로드하지 못했습니다.")
                 return
 
-            table_data, years_for_table, periods_for_table = self.refine_data(raw_data_df)
+            # refine_data 호출 시 선택된 연도 전달 (또는 내부에서 self.year_var.get() 사용)
+            table_data, years_for_display, periods_for_display = self.refine_data(raw_data_df)
             
             if table_data is None: return
-            self.table_frame.after(0, self.update_table, table_data, years_for_table, periods_for_table)
+            # years_for_display는 이제 선택된 단일 연도 리스트가 됨
+            self.table_frame.after(0, self.update_table, table_data, years_for_display, periods_for_display)
         except Exception as e:
             self.table_frame.after(0, self.show_error, f"데이터 처리 중 예외 발생: {e}")
         finally:
@@ -1434,6 +1449,7 @@ class BusinessSurvivalPage(DetailPage):
         return str(value)
 
     def refine_data(self, raw_data_df):
+        selected_year_str = self.year_var.get() # 사용자가 선택한 연도 (예: "2023")
         refined_list = []
         try:
             id_cols_map = {}
@@ -1445,84 +1461,98 @@ class BusinessSurvivalPage(DetailPage):
                 self.table_frame.after(0, self.show_error, "CSV 식별자 컬럼이 3개 미만입니다.")
                 return None, None, None
             
-            data_cols_actual = [col for col in raw_data_df.columns if col not in id_cols_map.keys()]
-            years_in_data_raw = []
-            if data_cols_actual:
-                years_in_data_raw = sorted(list(set(
-                    col[0] for col in data_cols_actual
-                    if isinstance(col, tuple) and len(col) > 0 and isinstance(col[0], str) and re.match(r'^\d{4}$', col[0])
-                )), reverse=True)
-            
-            if not years_in_data_raw:
-                self.table_frame.after(0, self.show_error, "컬럼에서 연도 정보를 찾을 수 없습니다.")
+            # 데이터 컬럼 중에서 선택된 연도에 해당하는 컬럼들만 필터링
+            # 멀티인덱스 컬럼의 첫 번째 레벨이 selected_year_str과 일치하는 것을 찾음
+            data_cols_for_selected_year = [
+                col for col in raw_data_df.columns 
+                if col not in id_cols_map.keys() and 
+                   isinstance(col, tuple) and len(col) > 0 and col[0] == selected_year_str
+            ]
+
+            if not data_cols_for_selected_year:
+                self.table_frame.after(0, self.show_error, f"{selected_year_str}년 데이터를 찾을 수 없습니다.")
                 return None, None, None
-            years_in_data = years_in_data_raw
 
+            # 이제 years_for_display는 선택된 연도 하나만 가짐
+            years_for_display = [selected_year_str]
+
+            # 선택된 연도의 사업존속기간 추출
             ordered_survival_periods = ['총계', '6월미만', '6월이상', '1년이상', '2년이상', '3년이상', '5년 이상', '10년 이상', '20년 이상', '30년 이상']
-            available_periods_in_header = []
-            if data_cols_actual and years_in_data_raw:
-                first_year_raw_for_period_check = years_in_data_raw[0]
-                available_periods_in_header = sorted(list(set(
-                    col[1] for col in data_cols_actual
-                    if isinstance(col, tuple) and len(col) > 1 and col[0] == first_year_raw_for_period_check
-                )))
             
-            survival_periods_to_display = [p for p in ordered_survival_periods if p in available_periods_in_header]
-            if not survival_periods_to_display and available_periods_in_header:
-                survival_periods_to_display = available_periods_in_header
+            # data_cols_for_selected_year에서 기간 정보(멀티인덱스의 두 번째 레벨)를 가져옴
+            available_periods_in_header_raw = list(set(col[1] for col in data_cols_for_selected_year if len(col) > 1))
+            
+            # 중복된 "총계"를 제거하고 ordered_survival_periods 순서에 맞게 정렬
+            # "총계"는 하나만 유지 (보통 처음에 나옴)
+            survival_periods_to_display = []
+            has_total = False
+            for period in ordered_survival_periods:
+                if period in available_periods_in_header_raw:
+                    if period == '총계':
+                        if not has_total:
+                            survival_periods_to_display.append(period)
+                            has_total = True
+                    else:
+                        survival_periods_to_display.append(period)
+            
+            # 만약 ordered_survival_periods에 없는 기간이 available_periods_in_header_raw에 있다면 추가 (순서 유지 어려움)
+            # 여기서는 ordered_survival_periods에 있는 것만 고려
+            
             if not survival_periods_to_display:
-                 self.table_frame.after(0, self.show_error, "사업존속기간 정보를 컬럼에서 찾을 수 없습니다.")
-                 return None, years_in_data, []
+                 self.table_frame.after(0, self.show_error, f"{selected_year_str}년의 사업존속기간 정보를 찾을 수 없습니다.")
+                 return None, years_for_display, []
 
+            # 데이터 정제 (선택된 연도에 대해서만)
             for _, row in raw_data_df.iterrows():
                 refined_row = {}
                 for actual_col_key, display_name in id_cols_map.items():
                     refined_row[display_name] = self.clean_identifier_value(row.get(actual_col_key, ''))
-                for year_str in years_in_data:
-                    for period in survival_periods_to_display:
-                        col_key_for_value = (year_str, period)
-                        value = row.get(col_key_for_value, '-')
-                        refined_row[f'{year_str}_{period}'] = self.format_number(value)
+                
+                # 선택된 연도의 사업존속기간 데이터만 refined_row에 추가
+                for period in survival_periods_to_display:
+                    col_key_for_value = (selected_year_str, period) # (예: "2023", "총계")
+                    value = row.get(col_key_for_value, '-')
+                    refined_row[f'{selected_year_str}_{period}'] = self.format_number(value)
                 refined_list.append(refined_row)
             
             refined_list.sort(key=lambda x: (x.get('과세유형',''), x.get('구분1',''), x.get('구분2','')))
-            return refined_list, years_in_data, survival_periods_to_display
+            return refined_list, years_for_display, survival_periods_to_display
+
         except Exception as e_gen:
             import traceback; traceback.print_exc()
             self.table_frame.after(0, self.show_error, f"데이터 정제 중 오류: {e_gen}")
             return None, None, None
 
-    def update_table(self, data, years_for_table, periods_for_table): # 메소드명 일관성 유지
+    def update_table(self, data, years_for_display, periods_for_display):
         for widget in self.table_frame.winfo_children(): widget.destroy()
         for widget in self.info_frame.winfo_children(): widget.destroy()
             
-        if not data or not periods_for_table or not years_for_table:
+        if not data or not periods_for_display or not years_for_display:
             self.show_initial_message("데이터 또는 헤더 정보가 부족하여 테이블을 생성할 수 없습니다.")
             return
             
-        self.create_treeview_for_survival(data, years_for_table, periods_for_table) # 새 메소드명
+        self.create_treeview_for_survival(data, years_for_display, periods_for_display)
         
-        selected_year_combo = self.year_var.get() # 콤보박스에서 선택된 연도
-        info_text = f"선택한 연도: {selected_year_combo}년, 총 {len(data):,}건 데이터 로드 완료"
+        # 정보 라인 텍스트 (years_for_display는 이제 선택된 단일 연도 리스트)
+        selected_display_year = years_for_display[0] if years_for_display else self.year_var.get()
+        info_text = f"선택한 연도: {selected_display_year}년, 총 {len(data):,}건 데이터 로드 완료"
         tk.Label(self.info_frame, text=info_text, bg="white", fg="blue", font=("Arial", 10)).pack(side=tk.LEFT)
 
-    def create_treeview_for_survival(self, data, years_in_data, survival_periods):
-        # Treeview 컬럼 ID 및 표시 이름 정의
+    def create_treeview_for_survival(self, data, years_to_display, survival_periods):
+        # years_to_display는 이제 단일 선택된 연도만 담고 있는 리스트 (예: ["2023"])
+        selected_year = years_to_display[0]
+
         column_ids = ['col_tax_type', 'col_cat1', 'col_cat2']
         column_display_names = ['과세유형', '구분1', '구분2']
         column_widths = [150, 120, 180]
 
         # 데이터 컬럼 (Treeview 헤더는 사업존속기간만 표시)
-        # 데이터는 모든 연도에 대해 표시되지만, Treeview 컬럼은 기간만큼만 필요
-        # 실제 데이터 삽입 시 (연도, 기간) 조합으로 값을 가져옴
-        for year in years_in_data:
-            for period in survival_periods:
-                # Treeview 컬럼 ID는 고유해야 하므로 연도와 기간을 조합
-                col_id = f"col_{year}_{period.replace(' ', '_').replace('.', '')}"
-                column_ids.append(col_id)
-                # Treeview 헤더는 기간만 표시
-                column_display_names.append(period)
-                column_widths.append(90)
+        for period in survival_periods: # survival_periods는 이미 중복 "총계"가 제거된 상태여야 함
+            # Treeview 컬럼 ID는 고유해야 하므로 연도와 기간을 조합 (실제로는 선택된 연도만 사용)
+            col_id = f"col_{selected_year}_{period.replace(' ', '_').replace('.', '')}"
+            column_ids.append(col_id)
+            column_display_names.append(period) # 헤더는 기간만 표시
+            column_widths.append(90)
 
         self.tree = ttk.Treeview(self.table_frame, columns=column_ids, show="headings")
         
@@ -1538,12 +1568,10 @@ class BusinessSurvivalPage(DetailPage):
         self.table_frame.grid_rowconfigure(0, weight=1)
         self.table_frame.grid_columnconfigure(0, weight=1)
         
-        # 헤더 설정
         for i, col_id in enumerate(column_ids):
             self.tree.heading(col_id, text=column_display_names[i], anchor='center')
             self.tree.column(col_id, width=column_widths[i], anchor='center' if i >=3 else 'w', stretch=tk.NO)
 
-        # 스타일 태그
         self.tree.tag_configure('group_header_main', font=('Arial', 9, 'bold'), background='#E0E0E0')
         self.tree.tag_configure('oddrow', background='#F8F9FA')
         self.tree.tag_configure('evenrow', background='white')
@@ -1563,10 +1591,10 @@ class BusinessSurvivalPage(DetailPage):
             row_values.append(item_data.get('구분1', '-'))
             row_values.append(item_data.get('구분2', '-'))
             
-            # 데이터 컬럼 값 채우기
-            for year in years_in_data:
-                for period in survival_periods:
-                    row_values.append(item_data.get(f'{year}_{period}', '-'))
+            # 데이터 컬럼 값 채우기 (선택된 연도에 대해서만)
+            for period in survival_periods:
+                # refined_data에서 이미 {selected_year}_{period} 형태로 키가 저장되어 있음
+                row_values.append(item_data.get(f'{selected_year}_{period}', '-'))
             
             tag = 'oddrow' if item_idx % 2 == 0 else 'evenrow'
             self.tree.insert('', 'end', values=row_values, tags=(tag,))
@@ -1574,66 +1602,510 @@ class BusinessSurvivalPage(DetailPage):
     def show_error(self, message):
         for widget in self.table_frame.winfo_children(): widget.destroy()
         for widget in self.info_frame.winfo_children(): widget.destroy()
-        
         error_label = tk.Label(self.table_frame, text=f"오류 발생: {message}", fg="red", bg="white", font=("Arial", 12),
                               wraplength=self.table_frame.winfo_width() - 20 if self.table_frame.winfo_width() > 20 else 300)
         error_label.pack(pady=20, padx=10)
 
 
 
+
 ########################################################################################################################################
 class NewBusinessPage(DetailPage):
-    """신규 사업자 페이지"""
+    """신규 사업자 현황 페이지 - 계층적 그룹 구분감 강화"""
+
     def __init__(self, parent, controller):
-        DetailPage.__init__(self, parent, controller, 
-                          "신규 사업자", "연령,성별,지역")
+        DetailPage.__init__(self, parent, controller,
+                          "신규 사업자 현황", "연령, 성별, 지역별 신규 사업자 수")
+
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.csv_path = os.path.join(
+            current_dir,
+            "9.8.19_신규_사업자_현황_Ⅲ__연령__성__지역_2013_20250527163606.csv"
+        )
+
+        self.control_frame = tk.Frame(self.content_frame, bg="white")
+        self.control_frame.pack(fill=tk.X, pady=10)
+
+        tk.Label(self.control_frame, text="조회 년도:", bg="white").pack(side=tk.LEFT, padx=5)
+        self.year_var = tk.StringVar(value="2023")
+        self.year_combo = ttk.Combobox(
+            self.control_frame, textvariable=self.year_var,
+            values=[str(y) for y in range(2019, 2024)], width=8 # CSV 데이터 연도 범위 확인 필요
+        )
+        self.year_combo.pack(side=tk.LEFT, padx=5)
         
-        # 여기에 데이터 시각화 내용 추가
-        self.fig = plt.Figure(figsize=(10, 6), dpi=100)
-        self.ax = self.fig.add_subplot(111)
+        self.search_button = tk.Button(
+            self.control_frame, text="데이터 불러오기",
+            command=self.start_loading, bg="#4CAF50", fg="black"
+        )
+        self.search_button.pack(side=tk.LEFT, padx=10)
+
+        self.home_button = tk.Button(
+            self.control_frame, text="메인으로 돌아가기",
+            command=lambda: controller.show_frame(MainPage),
+            bg="#2196F3", font=("Arial", 10, "bold")
+        )
+        self.home_button.pack(side=tk.LEFT, padx=5)
+
+        self.table_frame = tk.Frame(self.content_frame, bg="white")
+        self.table_frame.pack(fill=tk.BOTH, expand=True, pady=10)
         
-        # 샘플 데이터
-        age_groups = ['20대', '30대', '40대', '50대', '60대 이상']
-        male_values = [10, 25, 30, 20, 15]
-        female_values = [8, 20, 25, 15, 10]
+        self.info_frame = tk.Frame(self.content_frame, bg="white")
+        self.info_frame.pack(fill=tk.X, pady=5)
+
+        self.tree = None
+        self.show_initial_message()
+
+    def show_initial_message(self, text=None):
+        for widget in self.table_frame.winfo_children(): widget.destroy()
+        for widget in self.info_frame.winfo_children(): widget.destroy()
+        initial_text = text or "년도를 선택하고 '데이터 불러오기' 버튼을 클릭하세요.\n\n※ 데이터 로딩에 시간이 소요될 수 있습니다."
+        tk.Label(self.table_frame, text=initial_text, bg="white", font=("Arial", 12), fg="gray").pack(pady=80)
+
+    def start_loading(self):
+        self.search_button.config(state=tk.DISABLED)
+        self._show_loading_message()
+        threading.Thread(target=self.load_data, daemon=True).start()
+
+    def _show_loading_message(self):
+        for widget in self.table_frame.winfo_children(): widget.destroy()
+        for widget in self.info_frame.winfo_children(): widget.destroy()
+        tk.Label(self.table_frame, text="데이터를 불러오는 중...", fg="blue", bg="white", font=("Arial", 14)).pack(pady=50)
+
+    def load_data(self):
+        try:
+            raw_data_df = self.load_csv_data()
+            if raw_data_df is None:
+                self.table_frame.after(0, self.show_error, "CSV 파일을 로드하지 못했습니다.")
+                return
+
+            table_data, age_groups_for_display = self.refine_new_business_data(raw_data_df)
+            
+            if table_data is None: return
+            self.table_frame.after(0, self.update_table, table_data, age_groups_for_display)
+        except Exception as e:
+            self.table_frame.after(0, self.show_error, f"데이터 처리 중 예외 발생: {e}")
+        finally:
+            if hasattr(self, 'search_button') and self.search_button.winfo_exists():
+                 self.table_frame.after(0, lambda: self.search_button.config(state=tk.NORMAL))
+
+    def load_csv_data(self):
+        # (이전 답변과 동일)
+        try:
+            df = pd.read_csv(self.csv_path, encoding='utf-8-sig', header=[0, 1])
+            return df
+        except UnicodeDecodeError:
+            try:
+                df = pd.read_csv(self.csv_path, encoding='cp949', header=[0, 1])
+                return df
+            except Exception: return None
+        except Exception: return None
+
+
+    def clean_identifier_value(self, value):
+        # (이전 답변과 동일)
+        if pd.isna(value) or str(value).strip() == '': return ''
+        value_str = str(value).strip()
+        match_code = re.search(r'^[A-Z0-9]+\s*(.+)', value_str)
+        cleaned_val = match_code.group(1).strip() if match_code else value_str
+        cleaned_val = re.sub(r'\s*\(\d\)$', '', cleaned_val).strip()
+        return cleaned_val
+    
+    def format_number(self, value):
+        # (이전 답변과 동일)
+        if pd.isna(value) or str(value).strip() == '-': return '-'
+        try:
+            num_str = str(value).replace(',', '').strip()
+            if num_str.replace('.', '', 1).replace('-', '', 1).isdigit():
+                num_val = float(num_str)
+                return f"{int(num_val):,}" if num_val == int(num_val) else f"{num_val:,.0f}"
+        except (ValueError, TypeError): pass
+        return str(value)
+
+    def refine_new_business_data(self, raw_data_df):
+        # (이전 답변과 동일 - 선택 연도 필터링 로직 포함)
+        selected_year_str = self.year_var.get()
+        refined_list = []
+        try:
+            id_cols_map = {}
+            if len(raw_data_df.columns) >= 3:
+                id_cols_map[raw_data_df.columns[0]] = '사업자별'
+                id_cols_map[raw_data_df.columns[1]] = '성별'
+                id_cols_map[raw_data_df.columns[2]] = '지역별'
+            else:
+                self.table_frame.after(0, self.show_error, "신규사업자 CSV 식별자 컬럼이 3개 미만입니다.")
+                return None, None
+
+            data_cols_for_selected_year = [
+                col for col in raw_data_df.columns 
+                if col not in id_cols_map.keys() and 
+                   isinstance(col, tuple) and len(col) > 0 and col[0] == selected_year_str
+            ]
+            if not data_cols_for_selected_year:
+                self.table_frame.after(0, self.show_error, f"{selected_year_str}년 데이터를 찾을 수 없습니다.")
+                return None, None
+
+            ordered_age_groups = ["합계", "30세 미만", "30세 이상", "40세 이상", "50세 이상", "60세 이상", "70세 이상"]
+            available_age_groups_raw = list(set(col[1] for col in data_cols_for_selected_year if len(col) > 1))
+            age_groups_to_display = [group for group in ordered_age_groups if group in available_age_groups_raw]
+            if not age_groups_to_display and available_age_groups_raw:
+                age_groups_to_display = available_age_groups_raw
+            if not age_groups_to_display:
+                 self.table_frame.after(0, self.show_error, f"{selected_year_str}년의 연령 그룹 정보를 찾을 수 없습니다.")
+                 return None, None
+
+            for _, row in raw_data_df.iterrows():
+                refined_row = {}
+                for actual_col_key, display_name in id_cols_map.items():
+                    refined_row[display_name] = self.clean_identifier_value(row.get(actual_col_key, ''))
+                for age_group in age_groups_to_display:
+                    col_key_for_value = (selected_year_str, age_group)
+                    value = row.get(col_key_for_value, '-')
+                    refined_row[age_group.replace(' ', '_').replace('.', '')] = self.format_number(value)
+                refined_list.append(refined_row)
+            
+            refined_list.sort(key=lambda x: (x.get('사업자별',''), x.get('성별',''), x.get('지역별','')))
+            return refined_list, age_groups_to_display
+        except Exception as e_gen:
+            import traceback; traceback.print_exc()
+            self.table_frame.after(0, self.show_error, f"신규사업자 데이터 정제 중 오류: {e_gen}")
+            return None, None
+
+    def update_table(self, data, age_groups_for_display):
+        # (이전 답변과 동일)
+        for widget in self.table_frame.winfo_children(): widget.destroy()
+        for widget in self.info_frame.winfo_children(): widget.destroy()
+            
+        if not data or not age_groups_for_display:
+            self.show_initial_message("데이터 또는 헤더 정보가 부족하여 테이블을 생성할 수 없습니다.")
+            return
+            
+        self.create_new_business_treeview(data, age_groups_for_display) # 메소드명 일관성
         
-        x = np.arange(len(age_groups))
-        width = 0.35
+        selected_year_combo = self.year_var.get()
+        info_text = f"선택한 연도: {selected_year_combo}년, 총 {len(data):,}건 데이터 로드 완료"
+        tk.Label(self.info_frame, text=info_text, bg="white", fg="blue", font=("Arial", 10)).pack(side=tk.LEFT)
+
+    def create_new_business_treeview(self, data, age_groups):
+        # 컬럼 정의 (이전과 동일)
+        column_ids = ['col_biz_type', 'col_gender', 'col_region']
+        column_display_names = ['사업자별', '성별', '지역별']
+        column_widths = [120, 80, 120]
+
+        for age_group in age_groups:
+            col_id = f"col_age_{age_group.replace(' ', '_').replace('.', '')}"
+            column_ids.append(col_id)
+            column_display_names.append(age_group)
+            column_widths.append(90)
+
+        self.tree = ttk.Treeview(self.table_frame, columns=column_ids, show="headings")
         
-        self.ax.bar(x - width/2, male_values, width, label='남성')
-        self.ax.bar(x + width/2, female_values, width, label='여성')
+        vsb = ttk.Scrollbar(self.table_frame, orient="vertical", command=self.tree.yview)
+        hsb = ttk.Scrollbar(self.table_frame, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+
+        self.tree.grid(row=0, column=0, sticky='nsew')
+        vsb.grid(row=0, column=1, sticky='ns')
+        hsb.grid(row=1, column=0, sticky='ew')
+        self.table_frame.grid_rowconfigure(0, weight=1)
+        self.table_frame.grid_columnconfigure(0, weight=1)
         
-        self.ax.set_title('연령 및 성별 신규 사업자 분포')
-        self.ax.set_xticks(x)
-        self.ax.set_xticklabels(age_groups)
-        self.ax.legend()
-        
-        canvas = FigureCanvasTkAgg(self.fig, self.content_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        # 헤더 설정 (이전과 동일)
+        for i, col_id in enumerate(column_ids):
+            self.tree.heading(col_id, text=column_display_names[i], anchor='center')
+            self.tree.column(col_id, width=column_widths[i], anchor='center' if i >=3 else 'w', stretch=tk.NO)
+
+        # 스타일 태그 정의 (그룹별로 다른 배경색, 폰트)
+        self.tree.tag_configure('group_biz_header', font=('Arial', 10, 'bold'), background='#D8E6F3') # 사업자별 그룹
+        self.tree.tag_configure('group_gender_header', font=('Arial', 9, 'italic'), background='#E9D8F3') # 성별 그룹
+        self.tree.tag_configure('data_row_odd', background='#F8F9FA')
+        self.tree.tag_configure('data_row_even', background='white')
+
+        current_biz_type = None
+        current_gender = None
+        biz_type_iid = ''  # 현재 사업자별 그룹의 아이템 ID
+        gender_iid = ''    # 현재 성별 그룹의 아이템 ID
+        row_counter = 0    # 데이터 행의 홀/짝 구분용
+
+        for item_data in data:
+            biz_type_val = item_data.get('사업자별', '')
+            gender_val = item_data.get('성별', '')
+            region_val = item_data.get('지역별', '')
+            
+            # "사업자별" 그룹 처리
+            if biz_type_val != current_biz_type:
+                current_biz_type = biz_type_val
+                current_gender = None # 사업자 그룹이 바뀌면 성별 그룹도 리셋
+                # 사업자별 그룹 헤더는 첫 번째 컬럼에만 텍스트 표시
+                group_biz_values = [f"▼ {biz_type_val}"] + [''] * (len(column_ids) - 1)
+                biz_type_iid = self.tree.insert('', 'end', values=group_biz_values, open=True, tags=('group_biz_header',))
+                row_counter = 0 # 그룹 변경 시 행 카운터 리셋
+
+            # "성별" 그룹 처리 (biz_type_iid가 있어야 그 자식으로 들어감)
+            # 그리고 "합계" 성별은 별도 그룹 헤더로 만들지 않음 (캡처 이미지 스타일)
+            if gender_val != current_gender and gender_val != "합계":
+                current_gender = gender_val
+                # 성별 그룹 헤더는 두 번째 컬럼에만 텍스트 표시
+                group_gender_values = ['', f"└ {gender_val}"] + [''] * (len(column_ids) - 2)
+                parent_for_gender = biz_type_iid if biz_type_iid else '' # 최상위 또는 사업자별 그룹의 자식
+                gender_iid = self.tree.insert(parent_for_gender, 'end', values=group_gender_values, open=True, tags=('group_gender_header',))
+                row_counter = 0 # 그룹 변경 시 행 카운터 리셋
+            elif gender_val == "합계" and biz_type_val != "합계": # 사업자별 "합계"는 별도 그룹 헤더 안함
+                gender_iid = biz_type_iid # 데이터가 사업자별 그룹 바로 아래로 가도록
+            elif biz_type_val == "합계" and gender_val == "합계": # 전체 합계의 경우
+                gender_iid = biz_type_iid
+
+            # 실제 데이터 행 삽입
+            row_values = []
+            # 데이터 행에서는 식별자 컬럼을 비우거나, 원하는 대로 표시
+            # 캡처 이미지 스타일: 그룹 헤더가 있으므로 데이터 행은 식별자 비우고 '지역별'부터 시작
+            row_values.append('') # 사업자별 비움
+            row_values.append('') # 성별 비움
+            row_values.append(region_val) # 지역별은 표시
+            
+            for age_group in age_groups:
+                row_values.append(item_data.get(age_group.replace(' ', '_').replace('.', ''), '-'))
+            
+            tag = 'data_row_odd' if row_counter % 2 == 0 else 'data_row_even'
+            
+            # 데이터 행의 부모 결정
+            parent_for_data = gender_iid if gender_val != "합계" and biz_type_val != "합계" else biz_type_iid
+            if not parent_for_data: parent_for_data = '' # 최상위로 (만약 biz_type_iid도 없다면)
+
+            self.tree.insert(parent_for_data, 'end', values=row_values, tags=(tag,))
+            row_counter += 1
+            
+    def show_error(self, message):
+        # (이전 답변과 동일)
+        for widget in self.table_frame.winfo_children(): widget.destroy()
+        for widget in self.info_frame.winfo_children(): widget.destroy()
+        error_label = tk.Label(self.table_frame, text=f"오류 발생: {message}", fg="red", bg="white", font=("Arial", 12),
+                              wraplength=self.table_frame.winfo_width() - 20 if self.table_frame.winfo_width() > 20 else 300)
+        error_label.pack(pady=20, padx=10)
+
+
+
+
+
 #########################################################################################################################################################
 class SearchStatsPage(DetailPage):
-    """검색 통계 페이지"""
+    """네이버 통합 검색어 트렌드 조회 페이지 - 그래프 깨짐 방지 강화"""
     def __init__(self, parent, controller):
-        DetailPage.__init__(self, parent, controller, 
-                          "검색 통계", "네이버 검색 통계")
-        
-        # 여기에 데이터 시각화 내용 추가
-        self.fig = plt.Figure(figsize=(10, 6), dpi=100)
-        self.ax = self.fig.add_subplot(111)
-        
-        # 샘플 데이터
-        months = ['1월', '2월', '3월', '4월', '5월', '6월']
-        values = [65, 70, 80, 75, 90, 95]
-        
-        self.ax.plot(months, values, marker='o')
-        self.ax.set_title('창업 관련 검색어 트렌드')
-        self.ax.set_ylabel('검색량 (상대적 수치)')
-        
-        canvas = FigureCanvasTkAgg(self.fig, self.content_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        DetailPage.__init__(self, parent, controller,
+                          "통합 검색어 트렌드", "네이버 데이터랩 API 활용")
 
+        # 네이버 API 키 
+        self.client_id = "M8tzIwynm9iGgAgerEQq" 
+        self.client_secret = "vfs4UQIB65" 
+
+        # --- UI 구성 (이전 답변과 대부분 동일) ---
+        self.search_controls_frame = tk.Frame(self.content_frame, bg="white")
+        self.search_controls_frame.pack(pady=10, fill=tk.X)
+
+        tk.Label(self.search_controls_frame, text="검색어:", bg="white").pack(side=tk.LEFT, padx=5)
+        self.keyword_entry = tk.Entry(self.search_controls_frame, width=25)
+        self.keyword_entry.pack(side=tk.LEFT, padx=5)
+        self.keyword_entry.insert(0, "카페")
+
+        tk.Label(self.search_controls_frame, text="시작일(YYYY-MM-DD):", bg="white").pack(side=tk.LEFT, padx=5)
+        self.start_date_entry = tk.Entry(self.search_controls_frame, width=12)
+        self.start_date_entry.pack(side=tk.LEFT, padx=5)
+        self.start_date_entry.insert(0, "2023-01-01")
+
+        tk.Label(self.search_controls_frame, text="종료일(YYYY-MM-DD):", bg="white").pack(side=tk.LEFT, padx=5)
+        self.end_date_entry = tk.Entry(self.search_controls_frame, width=12)
+        self.end_date_entry.pack(side=tk.LEFT, padx=5)
+        self.end_date_entry.insert(0, "2023-12-31")
+
+        tk.Label(self.search_controls_frame, text="구간 단위:", bg="white").pack(side=tk.LEFT, padx=5)
+        self.time_unit_var = tk.StringVar(value="date")
+        self.time_unit_combo = ttk.Combobox(
+            self.search_controls_frame, textvariable=self.time_unit_var,
+            values=["date", "week", "month"], width=8, state="readonly"
+        )
+        self.time_unit_combo.pack(side=tk.LEFT, padx=5)
+
+        self.fetch_button = tk.Button(self.search_controls_frame, text="검색량 조회",
+                                   command=self.start_fetch_trend_data)
+        self.fetch_button.pack(side=tk.LEFT, padx=10)
+        
+        self.home_button = tk.Button(self.search_controls_frame, text="메인으로 돌아가기",
+                               command=lambda: controller.show_frame(MainPage),
+                               bg="#2196F3", font=("Arial", 10, "bold"))
+        self.home_button.pack(side=tk.LEFT, padx=5)
+
+        self.result_text_area = scrolledtext.ScrolledText(self.content_frame, wrap=tk.WORD, height=8, width=80, font=("Arial", 9))
+        self.result_text_area.pack(pady=5, fill=tk.X, expand=False)
+
+        self.graph_frame = tk.Frame(self.content_frame, bg="lightgrey")
+        self.graph_frame.pack(pady=10, fill=tk.BOTH, expand=True)
+        
+        self.show_initial_graph_message()
+
+    def show_initial_graph_message(self):
+        for widget in self.graph_frame.winfo_children():
+            widget.destroy()
+        tk.Label(self.graph_frame, text="검색어를 입력하고 '검색량 조회' 버튼을 누르세요.",
+                 font=("Arial", 12), bg="lightgrey", fg="gray").pack(expand=True)
+
+    def start_fetch_trend_data(self):
+        if self.client_secret == "YOUR_NAVER_CLIENT_SECRET" or not self.client_secret: # 시크릿 값 확인
+            messagebox.showerror("API 키 오류", "네이버 API 클라이언트 시크릿을 코드에 정확히 입력해주세요.")
+            return
+
+        self.fetch_button.config(state=tk.DISABLED)
+        self.result_text_area.delete('1.0', tk.END)
+        self.result_text_area.insert(tk.END, "데이터를 가져오는 중...\n")
+        
+        for widget in self.graph_frame.winfo_children(): widget.destroy()
+        tk.Label(self.graph_frame, text="그래프 로딩 중...", font=("Arial", 12), bg="lightgrey").pack(expand=True)
+
+        threading.Thread(target=self.fetch_and_display_trend, daemon=True).start()
+
+    def fetch_and_display_trend(self):
+        keyword = self.keyword_entry.get().strip()
+        start_date = self.start_date_entry.get().strip()
+        end_date = self.end_date_entry.get().strip()
+        time_unit = self.time_unit_var.get()
+
+        if not all([keyword, start_date, end_date, time_unit]):
+            self.result_text_area.after(0, lambda: self.result_text_area.insert(tk.END, "오류: 모든 필드를 입력해주세요.\n"))
+            self.fetch_button.after(0, lambda: self.fetch_button.config(state=tk.NORMAL))
+            self.graph_frame.after(0, self.show_initial_graph_message)
+            return
+
+        date_pattern = r"^\d{4}-\d{2}-\d{2}$"
+        if not (re.match(date_pattern, start_date) and re.match(date_pattern, end_date)):
+            self.result_text_area.after(0, lambda: self.result_text_area.insert(tk.END, "오류: 날짜 형식이 올바르지 않습니다 (YYYY-MM-DD).\n"))
+            self.fetch_button.after(0, lambda: self.fetch_button.config(state=tk.NORMAL))
+            self.graph_frame.after(0, self.show_initial_graph_message)
+            return
+
+        api_data = self._fetch_naver_datalab_api(keyword, start_date, end_date, time_unit)
+
+        if api_data and 'results' in api_data and api_data['results'] and api_data['results'][0]['data']: # 데이터 존재 여부 확실히 체크
+            self.result_text_area.after(0, lambda: self.result_text_area.insert(tk.END, f"'{keyword}' 검색 트렌드 결과 수신 완료.\n"))
+            self.graph_frame.after(0, self._display_trend_graph, api_data, keyword)
+        else:
+            error_message = "데이터를 가져오지 못했거나 결과가 없습니다.\n"
+            if api_data and 'errorMessage' in api_data:
+                 error_message += f"API 오류: {api_data['errorMessage']} (코드: {api_data.get('errorCode','')})\n"
+            elif not api_data:
+                 error_message += "API 호출에 실패했습니다. 네트워크 연결 또는 API 키를 확인하세요.\n"
+
+            self.result_text_area.after(0, lambda: self.result_text_area.insert(tk.END, error_message))
+            self.graph_frame.after(0, self.show_initial_graph_message)
+
+        self.fetch_button.after(0, lambda: self.fetch_button.config(state=tk.NORMAL))
+
+    def _fetch_naver_datalab_api(self, keyword, start_date, end_date, time_unit):
+        api_url = "https://openapi.naver.com/v1/datalab/search"
+        headers = {
+            "X-Naver-Client-Id": self.client_id,
+            "X-Naver-Client-Secret": self.client_secret,
+            "Content-Type": "application/json"
+        }
+        body = {
+            "startDate": start_date, "endDate": end_date, "timeUnit": time_unit,
+            "keywordGroups": [{"groupName": keyword, "keywords": [keyword]}]
+        }
+        try:
+            response = requests.post(api_url, headers=headers, data=json.dumps(body), timeout=10)
+            # 디버깅: 응답 상태 코드와 내용 일부 출력
+            print(f"API 응답 상태 코드: {response.status_code}")
+            try:
+                print(f"API 응답 내용 (일부): {response.text[:200]}")
+            except Exception:
+                pass
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.HTTPError as errh:
+            # 오류 메시지에 응답 내용 포함
+            error_details = f"HTTP 오류: {errh}\n"
+            try:
+                error_details += f"응답 내용: {response.text}\n"
+            except Exception:
+                 error_details += "응답 내용을 확인할 수 없습니다.\n"
+            self.result_text_area.after(0, lambda: self.result_text_area.insert(tk.END, error_details))
+            try:
+                return response.json() # API가 오류 정보도 JSON으로 반환할 수 있음
+            except json.JSONDecodeError:
+                return None # JSON 파싱도 실패하면 None 반환
+        except requests.exceptions.RequestException as err: # 포괄적인 요청 관련 예외
+            self.result_text_area.after(0, lambda: self.result_text_area.insert(tk.END, f"API 요청 중 오류 발생: {err}\n"))
+            return None
+
+
+    def _display_trend_graph(self, api_response_data, keyword):
+        for widget in self.graph_frame.winfo_children():
+            widget.destroy()
+
+        try:
+            result_data = api_response_data['results'][0]['data']
+            if not result_data: # 데이터가 비어있는 경우
+                tk.Label(self.graph_frame, text=f"'{keyword}'에 대한 트렌드 데이터가 없습니다.", bg="lightgrey", fg="orange").pack(expand=True)
+                return
+
+            periods = [item['period'] for item in result_data]
+            ratios = [item['ratio'] for item in result_data]
+
+            fig = plt.Figure(figsize=(10, 5), dpi=100)
+            ax = fig.add_subplot(111)
+            
+            ax.plot(periods, ratios, marker='o', linestyle='-', color='dodgerblue', label=keyword)
+            
+            ax.set_title(f"'{keyword}' 검색량 트렌드", fontsize=14)
+            ax.set_xlabel("기간", fontsize=10)
+            ax.set_ylabel("상대적 검색량 비율", fontsize=10)
+            
+            # X축 레이블이 너무 많을 경우, 일부만 표시 (예: 10개 간격)
+            if len(periods) > 20: # 레이블 개수 임계값 (조정 가능)
+                tick_spacing = max(1, len(periods) // 10) # 약 10개의 레이블이 보이도록 간격 설정
+                ax.set_xticks(ax.get_xticks()[::tick_spacing])
+
+            ax.tick_params(axis='x', rotation=45, labelsize=8)
+            ax.tick_params(axis='y', labelsize=8)
+            ax.grid(True, linestyle='--', alpha=0.7)
+            ax.legend()
+            
+            fig.tight_layout()
+
+            canvas = FigureCanvasTkAgg(fig, master=self.graph_frame)
+            canvas_widget = canvas.get_tk_widget()
+            canvas_widget.pack(fill=tk.BOTH, expand=True)
+            canvas.draw()
+        except Exception as e:
+            print(f"그래프 표시 중 오류: {e}")
+            tk.Label(self.graph_frame, text=f"그래프를 표시하는 중 오류가 발생했습니다:\n{e}", 
+                     bg="lightgrey", fg="red").pack(expand=True)
+
+# --- DataVisualizationApp 클래스 및 if __name__ == "__main__": 블록 ---
+# (첨부해주신 paste-2.txt 의 내용과 동일하게 여기에 위치해야 합니다.)
+class DataVisualizationApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("데이터 시각화 대시보드")
+        self.root.geometry("1200x800")
+        self.container = tk.Frame(root)
+        self.container.pack(side="top", fill="both", expand=True)
+        self.container.grid_rowconfigure(0, weight=1)
+        self.container.grid_columnconfigure(0, weight=1)
+        self.frames = {}
+        # SearchStatsPage 포함하여 모든 페이지 클래스 나열 (다른 페이지 클래스 정의 필요)
+        # pages = (MainPage, AgeClosurePage, FranchiseClosurePage, RegionalClosurePage,
+        #         BusinessSurvivalPage, NewBusinessPage, SearchStatsPage) 
+        # 임시로 SearchStatsPage만 테스트 가능하도록 MainPage와 함께 구성
+        pages = (MainPage, SearchStatsPage) # 다른 페이지는 주석 처리하거나 실제 정의 필요
+        
+        for F in pages:
+            frame = F(self.container, self)
+            self.frames[F] = frame
+            frame.grid(row=0, column=0, sticky="nsew")
+        self.show_frame(MainPage) # 또는 SearchStatsPage로 바로 시작하려면 SearchStatsPage
+    
+    def show_frame(self, cont):
+        frame = self.frames[cont]
+        frame.tkraise()
 if __name__ == "__main__":
     root = tk.Tk()
     app = DataVisualizationApp(root)
